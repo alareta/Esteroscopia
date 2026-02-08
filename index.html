@@ -14,93 +14,144 @@
  * Licencia: MIT
  * Repositorio: https://github.com/alareta/Esteroscopia/
  */
-let img, depthMap, view, zBuffer;
-const MAX_DISPARITY = 18; 
-let autoT = 0;
-let lastMouseX = 0;
-let mouseInteractionTimer = 0;
+let img, depthMap;
+let maxDisparitySlider;
+let sceneSelector;
+
+// Lista de escenas disponibles
+let scenes = [
+  {
+    name: "Escena 1",
+    img: "imagenes/1_imagen.jpg",
+    depth: "imagenes/1_profundidad.png"
+  },
+  {
+    name: "Escena 2",
+    img: "imagenes/2_imagen.jpg",
+    depth: "imagenes/2_profundidad.png"
+  }
+];
 
 function preload() {
-  img = loadImage("https://raw.githubusercontent.com/alareta/Esteroscopia/refs/heads/main/imagenes/1_imagen.jpg", () => {}, () => {}, "anonymous");
-  depthMap = loadImage("https://raw.githubusercontent.com/alareta/Esteroscopia/refs/heads/main/imagenes/1_profundidad.png", () => {}, () => {}, "anonymous");
+  // Cargamos la primera escena por defecto
+  img = loadImage(scenes[0].img);
+  depthMap = loadImage(scenes[0].depth);
 }
 
 function setup() {
   createCanvas(800, 800);
+
+  // Slider fuerza 3D
+  maxDisparitySlider = createSlider(0, 40, 18, 1);
+  maxDisparitySlider.position(20, 20);
+  maxDisparitySlider.style("width", "200px");
+
+  // Selector de escenas
+  sceneSelector = createSelect();
+  sceneSelector.position(20, 60);
+
+  // Añadir opciones
+  for (let i = 0; i < scenes.length; i++) {
+    sceneSelector.option(scenes[i].name, i);
+  }
+
+  // Evento: cambiar escena
+  sceneSelector.changed(loadScene);
+
+  prepareImages();
+}
+
+function prepareImages() {
   img.resize(800, 800);
   depthMap.resize(800, 800);
-  
+
   img.loadPixels();
   depthMap.loadPixels();
-  
-  view = createImage(800, 800);
-  zBuffer = new Float32Array(800 * 800);
-  lastMouseX = mouseX;
+}
+
+function loadScene() {
+  let index = int(sceneSelector.value());
+
+  loadImage(scenes[index].img, (newImg) => {
+    img = newImg;
+
+    loadImage(scenes[index].depth, (newDepth) => {
+      depthMap = newDepth;
+      prepareImages();
+    });
+  });
 }
 
 function draw() {
   background(0);
-  
-  let t;
-  
-  // Detectar si el usuario está moviendo el ratón
-  if (abs(mouseX - lastMouseX) > 0.1) {
-    mouseInteractionTimer = 120; // 2 segundos de prioridad al ratón (a 60fps)
-  }
-  
-  if (mouseInteractionTimer > 0) {
-    // Control manual
-    t = map(mouseX, 0, width, -1, 1, true);
-    mouseInteractionTimer--;
-  } else {
-    // Movimiento automático suave (oscilación de lado a lado)
-    // El valor de frameCount * 0.02 controla la velocidad
-    autoT = sin(frameCount * 0.15); 
-    t = autoT;
-  }
-  
-  lastMouseX = mouseX;
 
-  generateView(t, MAX_DISPARITY);
+  let maxDisparity = maxDisparitySlider.value();
+  let t = map(mouseX, 0, width, -1, 1);
+
+  let view = generateView(t, maxDisparity);
   image(view, 0, 0);
+
+  fill(255);
+  noStroke();
+  textSize(14);
+  text("Depth strength: " + maxDisparity, 20, 110);
+  text("Press S to save frame", 20, 130);
 }
 
 function generateView(t, maxDisparity) {
+  let view = createImage(img.width, img.height);
   view.loadPixels();
-  view.pixels.set(img.pixels);
+
+  // Fondo base
+  for (let i = 0; i < img.pixels.length; i++) {
+    view.pixels[i] = img.pixels[i];
+  }
+
+  let zBuffer = new Float32Array(img.width * img.height);
   zBuffer.fill(-1);
 
-  for (let y = 0; y < 800; y++) {
-    for (let x = 0; x < 800; x++) {
-      let idx = x + y * 800;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+
+      let idx = x + y * img.width;
       let p = idx * 4;
 
+      // Depth invertido: blanco = lejos
       let d = depthMap.pixels[p] / 255;
-      d = 1.0 - d; 
-      d = pow(d, 1.2); 
+      d = 1.0 - d;
+
+      // Curva suave
+      d = pow(d, 1.4);
 
       let shift = int((d - 0.5) * maxDisparity * t);
       let tx = x + shift;
 
-      if (tx >= 0 && tx < 800) {
-        let tidx = tx + y * 800;
-        if (d > zBuffer[tidx]) {
-          let tp = tidx * 4;
-          view.pixels[tp]     = img.pixels[p];
-          view.pixels[tp + 1] = img.pixels[p + 1];
-          view.pixels[tp + 2] = img.pixels[p + 2];
-          view.pixels[tp + 3] = 255;
-          zBuffer[tidx] = d;
-        }
+      if (tx < 0 || tx >= img.width) continue;
+
+      let tidx = tx + y * img.width;
+      let tp = tidx * 4;
+
+      if (d >= zBuffer[tidx]) {
+        view.pixels[tp]     = img.pixels[p];
+        view.pixels[tp + 1] = img.pixels[p + 1];
+        view.pixels[tp + 2] = img.pixels[p + 2];
+        view.pixels[tp + 3] = 255;
+        zBuffer[tidx] = d;
       }
     }
   }
+
   view.updatePixels();
+  return view;
 }
 
+// Guardar frame
 function keyPressed() {
-  if (key === "s" || key === "S") saveCanvas("render_auto", "png");
+  if (key === "s" || key === "S") {
+    saveCanvas("parallax_frame", "png");
+  }
 }
+
 </script>
 </body>
 </html>
