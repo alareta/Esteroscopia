@@ -1,67 +1,109 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <meta charset="UTF-8">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
   <style>
-    body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #fff; overflow: hidden; }
+    body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #000; overflow: hidden; font-family: sans-serif; }
     canvas { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
+    /* Estilo para el selector */
+    select { position: absolute; top: 10px; left: 10px; z-index: 10; padding: 5px; border-radius: 4px; background: rgba(255,255,255,0.8); }
   </style>
 </head>
 <body>
 <script>
-   /**
-    * Prueba de Esteroscopia 3D
-    * Autor: alareta
-    * Licencia: MIT
-    * Repositorio: https://github.com/alareta/Esteroscopia/
-    */
+/**
+ * Prueba de Esteroscopia 3D con Selector de Escenas
+ * Autor: alareta
+ * Licencia: MIT
+ * Repositorio: https://github.com/alareta/Esteroscopia/
+ */
+
 let img, depthMap, view, zBuffer;
+let selector;
 const MAX_DISPARITY = 18; 
 let autoT = 0;
 let lastMouseX = 0;
 let mouseInteractionTimer = 0;
 
+// Definición de las escenas disponibles
+const escenas = [
+  { nombre: "Escena 1", img: "imagenes/1_imagen.jpg", depth: "imagenes/1_profundidad.png" },
+  { nombre: "Escena 2", img: "imagenes/2_imagen.jpg", depth: "imagenes/2_profundidad.png" },
+  { nombre: "Escena 3", img: "imagenes/3_imagen.jpg", depth: "imagenes/3_profundidad.png" }
+];
+
 function preload() {
-  img = loadImage("https://raw.githubusercontent.com/alareta/Esteroscopia/refs/heads/main/imagenes/1_imagen.jpg", () => {}, () => {}, "anonymous");
-  depthMap = loadImage("https://raw.githubusercontent.com/alareta/Esteroscopia/refs/heads/main/imagenes/1_profundidad.png", () => {}, () => {}, "anonymous");
+  // Cargamos la primera escena por defecto
+  cargarImagenes(0);
 }
 
 function setup() {
   createCanvas(800, 800);
-  img.resize(800, 800);
-  depthMap.resize(800, 800);
   
-  img.loadPixels();
-  depthMap.loadPixels();
-  
-  view = createImage(800, 800);
-  zBuffer = new Float32Array(800 * 800);
+  // Crear el menú desplegable
+  selector = createSelect();
+  selector.position(10, 10);
+  escenas.forEach((escena, index) => {
+    selector.option(escena.nombre, index);
+  });
+  selector.changed(cambiarEscena);
+
+  inicializarBuffers();
   lastMouseX = mouseX;
 }
 
-function draw() {
+function cargarImagenes(index) {
+  img = loadImage(escenas[index].img, procesarImagen);
+  depthMap = loadImage(escenas[index].depth, procesarImagen);
+}
+
+function procesarImagen() {
+  if (img.width > 0 && depthMap.width > 0) {
+    img.resize(800, 800);
+    depthMap.resize(800, 800);
+    img.loadPixels();
+    depthMap.loadPixels();
+  }
+}
+
+function inicializarBuffers() {
+  view = createImage(800, 800);
+  zBuffer = new Float32Array(800 * 800);
+}
+
+function cambiarEscena() {
+  let index = selector.value();
+  // Mostramos un fondo negro momentáneo mientras carga
   background(0);
-  
+  cargarImagenes(index);
+}
+
+function draw() {
+  if (!img.pixels.length || !depthMap.pixels.length) {
+    background(0);
+    fill(255);
+    textAlign(CENTER);
+    text("Cargando escena...", width/2, height/2);
+    return;
+  }
+
+  background(0);
   let t;
   
-  // Detectar si el usuario está moviendo el ratón
   if (abs(mouseX - lastMouseX) > 0.1) {
-    mouseInteractionTimer = 120; // 2 segundos de prioridad al ratón (a 60fps)
+    mouseInteractionTimer = 120; 
   }
   
   if (mouseInteractionTimer > 0) {
-    // Control manual
     t = map(mouseX, 0, width, -1, 1, true);
     mouseInteractionTimer--;
   } else {
-    // Movimiento automático suave (oscilación de lado a lado)
-    // El valor de frameCount * 0.02 controla la velocidad
     autoT = sin(frameCount * 0.15); 
     t = autoT;
   }
   
   lastMouseX = mouseX;
-
   generateView(t, MAX_DISPARITY);
   image(view, 0, 0);
 }
@@ -100,7 +142,7 @@ function generateView(t, maxDisparity) {
 }
 
 function keyPressed() {
-  if (key === "s" || key === "S") saveCanvas("render_auto", "png");
+  if (key === "s" || key === "S") saveCanvas("render_" + selector.value(), "png");
 }
 </script>
 </body>
