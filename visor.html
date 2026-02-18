@@ -4,83 +4,55 @@
   <meta charset="UTF-8">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
   <style>
-    /* Reset total para eliminar márgenes y scrolls */
-    body { 
-      margin: 0; 
-      padding: 0; 
-      background-color: #000; 
-      overflow: hidden; 
-      display: flex; 
-      justify-content: center; 
-      align-items: center; 
-      height: 100vh; 
-      width: 100vw;
-    }
-    
-    /* El canvas será cuadrado y se adaptará al menor de los dos ejes */
-    canvas { 
-      max-width: 100%; 
-      max-height: 100%; 
-      width: auto !important; 
-      height: auto !important; 
-      aspect-ratio: 1 / 1; 
-      object-fit: contain;
-      box-shadow: 0 0 20px rgba(0,0,0,0.5);
-    }
+    body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #000; overflow: hidden; }
+    canvas { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: pixelated; }
   </style>
 </head>
 <body>
 <script>
+/**
+ * Estereoscopia 3D - Versión de Imagen Única (Sin Selector)
+ * Versión: FINAL OPTIMIZADA (Lerp + Rescaling + Sleep Mode)
+ */
 /**
  * Prueba de Esteroscopia 3D con Selector de Escenas
  * Versión: FINAL OPTIMIZADA (Lerp + Rescaling + Sleep Mode)
  * Autor: alareta
  * Licencia: MIT
  */
-/**
- * Versión Forzada 800x800 Responsive
- */
 
 let img, depthMap, view, zBuffer;
 const MAX_DISPARITY = 18; 
 let lastMouseX = 0;
 let mouseInteractionTimer = 0;
-let currentT = 0;
-let RES = 0.7; 
 
-// Fijamos la resolución base de trabajo
-const BASE_SIZE = 600;
+// --- CONFIGURACIÓN DE RENDIMIENTO ---
+const W = 800;   // Ancho del canvas
+const H = 800;   // Alto del canvas
+const RES = 0.7; // Resolución interna (0.7 = 70% para ganar velocidad)
+
+let internalW = W * RES;
+let internalH = H * RES;
+let currentT = 0;
+
+// --- CONFIGURACIÓN DE IMAGEN ---
+// Cambia estas URLs por las de la imagen que quieras mostrar
+const URL_IMAGEN = "https://raw.githubusercontent.com/alareta/Estereoscopia/refs/heads/main/imagenes/6_imagen.jpg";
+const URL_PROFUNDIDAD = "https://raw.githubusercontent.com/alareta/Estereoscopia/refs/heads/main/imagenes/6_profundidad.png";
 
 function preload() {
-  let params = getURLParams();
-  let defaultImg = "https://raw.githubusercontent.com/alareta/Estereoscopia/main/imagenes/1_imagen.jpg";
-  let defaultDepth = "https://raw.githubusercontent.com/alareta/Estereoscopia/main/imagenes/1_profundidad.png";
-  
-  img = loadImage(params.img || defaultImg);
-  depthMap = loadImage(params.depth || defaultDepth);
+  img = loadImage(URL_IMAGEN, procesarImagen);
+  depthMap = loadImage(URL_PROFUNDIDAD, procesarImagen);
 }
 
 function setup() {
-  // Creamos el lienzo siempre a 600x600. 
-  // El CSS se encargará de encogerlo visualmente si el iframe es pequeño.
-  createCanvas(BASE_SIZE, BASE_SIZE);
-  pixelDensity(1);
+  createCanvas(W, H);
   inicializarBuffers();
-  procesarImagen();
-}
-
-function inicializarBuffers() {
-  // Trabajamos internamente a 600 * RES (al 0,7) para que vuele
-  let internalW = floor(width * RES);
-  let internalH = floor(height * RES);
-  view = createImage(internalW, internalH);
-  zBuffer = new Float32Array(internalW * internalH);
+  lastMouseX = mouseX;
 }
 
 function procesarImagen() {
   if (img.width > 0 && depthMap.width > 0) {
-    let internalW = floor(width * RES);
-    let internalH = floor(height * RES);
     img.resize(internalW, internalH); 
     depthMap.resize(internalW, internalH);
     img.loadPixels();
@@ -88,14 +60,25 @@ function procesarImagen() {
   }
 }
 
-function draw() {
-  if (!img.pixels.length || !depthMap.pixels.length) return;
+function inicializarBuffers() {
+  view = createImage(internalW, internalH);
+  zBuffer = new Float32Array(internalW * internalH);
+}
 
+function draw() {
+  // 1. SEGURIDAD: Verificar carga
+  if (!img || !depthMap || !img.pixels || !depthMap.pixels || img.pixels.length === 0) {
+    background(0);
+    return;
+  }
+
+  // 2. CALCULAR OBJETIVO
   let targetT = 0;
-  if (abs(mouseX - lastMouseX) > 0.1) mouseInteractionTimer = 40; 
+  if (abs(mouseX - lastMouseX) > 0.1) {
+    mouseInteractionTimer = 40; 
+  }
   
   if (mouseInteractionTimer > 0) {
-    // IMPORTANTE: Mapeamos mouseX respecto al ancho real del canvas (width)
     targetT = map(mouseX, 0, width, -1, 1, true);
     mouseInteractionTimer--;
   } else {
@@ -103,34 +86,40 @@ function draw() {
   }
   lastMouseX = mouseX;
 
-  if (abs(targetT - currentT) < 0.0005) return; 
+  // 3. OPTIMIZACIÓN DE REPOSO (Sleep Mode)
+  let diff = abs(targetT - currentT);
+  if (diff < 0.0005) {
+      return; 
+  }
 
+  // 4. RENDERIZADO
   background(0); 
   currentT = lerp(currentT, targetT, 0.1);
   generateView(currentT, MAX_DISPARITY);
   
-  // Dibujamos el buffer escalado para llenar los 800x800
   image(view, 0, 0, width, height);
 }
 
 function generateView(t, maxDisparity) {
-  let iW = view.width;
-  let iH = view.height;
   view.loadPixels();
   zBuffer.fill(-1);
 
-  for (let y = 0; y < iH; y++) {
-    for (let x = 0; x < iW; x++) {
-      let idx = x + y * iW; 
+  for (let y = 0; y < internalH; y++) {
+    for (let x = 0; x < internalW; x++) {
+      let idx = x + y * internalW; 
       let p = idx * 4; 
+
+      if (p >= depthMap.pixels.length) continue;
+
       let d = depthMap.pixels[p] / 255;
-      d = 1.0 - pow(1.0 - d, 1.2); 
+      d = 1.0 - d; 
+      d = pow(d, 1.2); 
 
       let shift = int((d - 0.5) * maxDisparity * t);
       let tx = x + shift;
 
-      if (tx >= 0 && tx < iW) { 
-        let tidx = tx + y * iW; 
+      if (tx >= 0 && tx < internalW) { 
+        let tidx = tx + y * internalW; 
         if (d > zBuffer[tidx]) {
           let tp = tidx * 4;
           view.pixels[tp]     = img.pixels[p];
@@ -143,6 +132,10 @@ function generateView(t, maxDisparity) {
     }
   }
   view.updatePixels();
+}
+
+function keyPressed() {
+  if (key === "s" || key === "S") saveCanvas("render_estereoscopia", "png");
 }
 </script>
 </body>
