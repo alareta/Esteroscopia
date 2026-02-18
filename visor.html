@@ -49,7 +49,7 @@ let currentT = 0;
 let RES = 0.7; 
 
 // Fijamos la resolución base de trabajo
-const BASE_SIZE = 800;
+const BASE_SIZE = 600;
 
 function preload() {
   let params = getURLParams();
@@ -61,7 +61,7 @@ function preload() {
 }
 
 function setup() {
-  // Creamos el lienzo siempre a 800x800. 
+  // Creamos el lienzo siempre a 600x600. 
   // El CSS se encargará de encogerlo visualmente si el iframe es pequeño.
   createCanvas(BASE_SIZE, BASE_SIZE);
   pixelDensity(1);
