@@ -4,9 +4,29 @@
   <meta charset="UTF-8">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.js"></script>
   <style>
-    /* Asegura que el sketch ocupe todo el espacio del iframe sin márgenes */
-    body { margin: 0; padding: 0; background-color: #000; overflow: hidden; }
-    canvas { display: block; width: 100vw !important; height: 100vh !important; object-fit: cover; }
+    /* Reset total para eliminar márgenes y scrolls */
+    body { 
+      margin: 0; 
+      padding: 0; 
+      background-color: #000; 
+      overflow: hidden; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      width: 100vw;
+    }
+    
+    /* El canvas será cuadrado y se adaptará al menor de los dos ejes */
+    canvas { 
+      max-width: 100%; 
+      max-height: 100%; 
+      width: auto !important; 
+      height: auto !important; 
+      aspect-ratio: 1 / 1; 
+      object-fit: contain;
+      box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    }
   </style>
 </head>
 <body>
@@ -17,17 +37,22 @@
  * Autor: alareta
  * Licencia: MIT
  */
+/**
+ * Versión Forzada 800x800 Responsive
+ */
 
 let img, depthMap, view, zBuffer;
 const MAX_DISPARITY = 18; 
 let lastMouseX = 0;
 let mouseInteractionTimer = 0;
 let currentT = 0;
-let RES = 0.7; // Factor de resolución interna para rendimiento
+let RES = 0.7; 
+
+// Fijamos la resolución base de trabajo
+const BASE_SIZE = 800;
 
 function preload() {
   let params = getURLParams();
-  // URLs por defecto (puedes cambiarlas por las tuyas)
   let defaultImg = "https://raw.githubusercontent.com/alareta/Estereoscopia/main/imagenes/1_imagen.jpg";
   let defaultDepth = "https://raw.githubusercontent.com/alareta/Estereoscopia/main/imagenes/1_profundidad.png";
   
@@ -36,37 +61,31 @@ function preload() {
 }
 
 function setup() {
-  // Crea el canvas al tamaño de la ventana (el iframe)
-  createCanvas(windowWidth, windowHeight);
-  pixelDensity(1); // Evita lag en pantallas Retina/4K
+  // Creamos el lienzo siempre a 800x800. 
+  // El CSS se encargará de encogerlo visualmente si el iframe es pequeño.
+  createCanvas(BASE_SIZE, BASE_SIZE);
+  pixelDensity(1);
   inicializarBuffers();
   procesarImagen();
 }
 
-function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  inicializarBuffers();
-  procesarImagen();
+function inicializarBuffers() {
+  // Trabajamos internamente a 800 * RES (560px) para que vuele
+  let internalW = floor(width * RES);
+  let internalH = floor(height * RES);
+  view = createImage(internalW, internalH);
+  zBuffer = new Float32Array(internalW * internalH);
 }
 
 function procesarImagen() {
   if (img.width > 0 && depthMap.width > 0) {
-    // Calculamos dimensiones internas basadas en el tamaño actual del canvas
     let internalW = floor(width * RES);
     let internalH = floor(height * RES);
-    
     img.resize(internalW, internalH); 
     depthMap.resize(internalW, internalH);
     img.loadPixels();
     depthMap.loadPixels();
   }
-}
-
-function inicializarBuffers() {
-  let internalW = floor(width * RES);
-  let internalH = floor(height * RES);
-  view = createImage(internalW, internalH);
-  zBuffer = new Float32Array(internalW * internalH);
 }
 
 function draw() {
@@ -76,6 +95,7 @@ function draw() {
   if (abs(mouseX - lastMouseX) > 0.1) mouseInteractionTimer = 40; 
   
   if (mouseInteractionTimer > 0) {
+    // IMPORTANTE: Mapeamos mouseX respecto al ancho real del canvas (width)
     targetT = map(mouseX, 0, width, -1, 1, true);
     mouseInteractionTimer--;
   } else {
@@ -89,7 +109,7 @@ function draw() {
   currentT = lerp(currentT, targetT, 0.1);
   generateView(currentT, MAX_DISPARITY);
   
-  // Dibujamos el buffer escalado al tamaño del canvas
+  // Dibujamos el buffer escalado para llenar los 800x800
   image(view, 0, 0, width, height);
 }
 
